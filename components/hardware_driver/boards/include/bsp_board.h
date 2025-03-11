@@ -47,6 +47,8 @@
     #include "esp32_s3_box_3_board.h"
 #elif CONFIG_ESP32_P4_FUNCTION_EV_BOARD
     #include "esp32_p4_function_ev_board.h"
+#elif CONFIG_ESP32_S3_CUSTOM_BOARD
+    #include "esp32_s3_custom_board.h"
 #else 
     #error "Please select type of dev board"
 #endif
