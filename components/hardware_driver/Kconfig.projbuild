@@ -6,6 +6,9 @@ choice AUDIO_BOARD
     help
         Select an audio board to use
 
+config ESP32_S3_CUSTOM_BOARD
+    bool "ESP32-S3-Custom"
+    depends on IDF_TARGET_ESP32S3
 config ESP32_KORVO_V1_1_BOARD
     bool "ESP32-Korvo"
     depends on IDF_TARGET_ESP32
