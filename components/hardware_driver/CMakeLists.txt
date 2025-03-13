@@ -30,6 +30,10 @@ if(CONFIG_ESP32_S3_CUSTOM_BOARD)
     list(APPEND BSP_BOARD_SRC "./boards/esp32s3-custom")
 endif()
 
+if(CONFIG_ESP32_S3_CUSTOM_2MIC)
+    list(APPEND BSP_BOARD_SRC "./boards/esp32s3-custom-2mic")
+endif()
+
 idf_component_register(
     SRC_DIRS
         ./
