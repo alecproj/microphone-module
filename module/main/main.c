@@ -1,12 +1,16 @@
+#include <stdbool.h>
+
 #include "esp_afe_sr_models.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "model_path.h"
 
 #include "i2s_input.h"
+#include "sdcard.h"
 
 
 static esp_afe_sr_iface_t *afe_handle = NULL;
+static bool sdcard_enable = true;
 
 void feed_Task(void *arg)
 {
@@ -37,6 +41,16 @@ void feed_Task(void *arg)
 void fetch_Task(void *arg)
 {
     esp_afe_sr_data_t *afe_data = arg;
+    FILE* fd = NULL;
+
+    if (sdcard_enable) 
+    {
+        fd = fopen("/sdcard/TEST.pcm", "w+");
+        if(fd == NULL) 
+        {
+            printf("can not open file!\n");
+        }
+    }
 
     while (1)
     {
@@ -47,6 +61,20 @@ void fetch_Task(void *arg)
             break;
         }
         printf("vad state: %s\n", res->vad_state == VAD_SILENCE ? "noise" : "speech");
+
+        if (sdcard_enable) 
+        {
+            /* Save speech data */
+            if (res->vad_cache_size > 0) 
+            {
+                printf("Save vad cache: %d\n", res->vad_cache_size);
+                sdcard_write(res->vad_cache, 1, res->vad_cache_size, fd);
+            }
+            if (res->vad_state == VAD_SPEECH) 
+            {
+                sdcard_write(res->data, 1, res->data_size, fd);
+            }
+        }
     }
 
     vTaskDelete(NULL);
@@ -55,6 +83,10 @@ void fetch_Task(void *arg)
 void app_main()
 {
     ESP_ERROR_CHECK(i2s_input_init());
+    if (sdcard_enable)
+    {
+        ESP_ERROR_CHECK(sdcard_init("/sdcard", 10));
+    }
 
     /* Initialize AFE Configuration */
     srmodel_list_t *models = esp_srmodel_init("model");
