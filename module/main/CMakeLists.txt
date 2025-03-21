@@ -2,10 +2,12 @@ idf_component_register (
     SRCS "main.c"
     SRCS "../i2s/i2s_input.c"
     SRCS "../sd_card/sdcard.c"
+    SRCS "../audio_tools/audio_tools.c"
 
     INCLUDE_DIRS "."
     INCLUDE_DIRS "../i2s"
     INCLUDE_DIRS "../sd_card"
+    INCLUDE_DIRS "../audio_tools"
 )
 
 

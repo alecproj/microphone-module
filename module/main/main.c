@@ -7,6 +7,7 @@
 
 #include "i2s_input.h"
 #include "sdcard.h"
+#include "audio_tools.h"
 
 
 static esp_afe_sr_iface_t *afe_handle = NULL;
@@ -60,19 +61,57 @@ void fetch_Task(void *arg)
             printf("fetch error\n");
             break;
         }
-        printf("vad state: %s\n", res->vad_state == VAD_SILENCE ? "noise" : "speech");
+        /* printf("vad state: %s\n", res->vad_state == VAD_SILENCE ? "noise" : "speech"); */
+        if (res->vad_state == VAD_SPEECH)
+        {
+            printf("vad state: speech\n");
+        }
 
         if (sdcard_enable) 
         {
             /* Save speech data */
             if (res->vad_cache_size > 0) 
             {
-                printf("Save vad cache: %d\n", res->vad_cache_size);
-                sdcard_write(res->vad_cache, 1, res->vad_cache_size, fd);
+                esp_err_t rv = ESP_OK;
+                audio_data input = {
+                    .data = res->vad_cache,
+                    .data_size = res->vad_cache_size,
+                    .data_channels = afe_handle->get_feed_channel_num(afe_data),
+                    .channel_index = res->trigger_channel_id
+                };
+                audio_data output = {0};
+
+                rv = downmix_to_mono(input, &output);
+                if (rv == ESP_OK)
+                {
+                    printf("Save vad cache: %d\n", res->vad_cache_size);
+                    sdcard_write(output.data, 1, output.data_size, fd);
+                }
+                else printf("ERROR stereo_to_mono");
+
+                free(output.data);
+                output.data = NULL;
             }
             if (res->vad_state == VAD_SPEECH) 
             {
-                sdcard_write(res->data, 1, res->data_size, fd);
+                esp_err_t rv = ESP_OK;
+                audio_data input = {
+                    .data = res->data,
+                    .data_size = res->data_size,
+                    .data_channels = afe_handle->get_feed_channel_num(afe_data),
+                    .channel_index = res->trigger_channel_id
+                };
+                audio_data output = {0};
+
+                rv = downmix_to_mono(input, &output);
+                if (rv == ESP_OK)
+                {
+                    sdcard_write(output.data, 1, output.data_size, fd);
+                }
+                else printf("ERROR stereo_to_mono");
+
+                free(output.data);
+                output.data = NULL;
             }
         }
     }
@@ -90,10 +129,11 @@ void app_main()
 
     /* Initialize AFE Configuration */
     srmodel_list_t *models = esp_srmodel_init("model");
-    afe_config_t *afe_config = afe_config_init(i2s_input_get_format(), models, AFE_TYPE_SR, AFE_MODE_LOW_COST);
+    afe_config_t *afe_config = afe_config_init(i2s_input_get_format(), models, AFE_TYPE_VC, AFE_MODE_HIGH_PERF);
     afe_config->vad_min_noise_ms = 1000;
     afe_config->vad_min_speech_ms = 128;
-    afe_config->vad_mode = VAD_MODE_1;
+    afe_config->vad_mode = VAD_MODE_0;
+    afe_config->wakenet_init = 0;
 
     /* Create AFE Instance */
     afe_handle = esp_afe_handle_from_config(afe_config);
