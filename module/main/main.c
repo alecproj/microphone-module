@@ -4,14 +4,51 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "model_path.h"
+#include "esp_log.h"
 
 #include "i2s_input.h"
 #include "sdcard.h"
 #include "audio_tools.h"
 
+#define SD_FOR_DEBUG_EN 1
+
 
 static esp_afe_sr_iface_t *afe_handle = NULL;
-static bool sdcard_enable = true;
+static const char* TAG = "module";
+#if SD_FOR_DEBUG_EN
+static FILE* fd = NULL;
+#endif // SD_FOR_DEBUG_EN
+
+void postprocess_and_stream(audio_data_t* audio_data)
+{
+    esp_err_t rv = ESP_OK;
+    audio_data_t output = {0};
+
+    if (!audio_data)
+    {
+        ESP_LOGE(TAG, "An invalid pointer was passed to the "
+                      "post processing function.");
+        return;
+    }
+
+    if (audio_data->data_channels > 1)
+    {
+        rv = downmix_to_mono(*audio_data, &output);
+        if (rv != ESP_OK)
+        {
+            ESP_LOGE(TAG, "An error (%s) occurred during post processing.", 
+                     esp_err_to_name(rv));
+            return;
+        }
+    }
+
+#if SD_FOR_DEBUG_EN
+    sdcard_write(output.data, 1, output.data_size, fd);
+#endif // SD_FOR_DEBUG_EN
+
+    free(output.data);
+    output.data = NULL;
+}
 
 void feed_Task(void *arg)
 {
@@ -42,77 +79,37 @@ void feed_Task(void *arg)
 void fetch_Task(void *arg)
 {
     esp_afe_sr_data_t *afe_data = arg;
-    FILE* fd = NULL;
-
-    if (sdcard_enable) 
-    {
-        fd = fopen("/sdcard/TEST.pcm", "w+");
-        if(fd == NULL) 
-        {
-            printf("can not open file!\n");
-        }
-    }
 
     while (1)
     {
         afe_fetch_result_t *res = afe_handle->fetch(afe_data);
         if (!res || res->ret_value == ESP_FAIL)
         {
-            printf("fetch error\n");
+            ESP_LOGE(TAG, "Fetch data error.");
             break;
         }
-        /* printf("vad state: %s\n", res->vad_state == VAD_SILENCE ? "noise" : "speech"); */
+
+        if (res->vad_cache_size > 0)
+        {
+            ESP_LOGI(TAG, "VAD cache size: %d", res->vad_cache_size);
+            audio_data_t audio_data = {
+                .data = res->vad_cache,
+                .data_size = res->vad_cache_size,
+                .data_channels = afe_handle->get_feed_channel_num(afe_data),
+                .target_channel = res->trigger_channel_id
+            };
+            postprocess_and_stream(&audio_data);
+        }
         if (res->vad_state == VAD_SPEECH)
         {
-            printf("vad state: speech\n");
-        }
-
-        if (sdcard_enable) 
-        {
-            /* Save speech data */
-            if (res->vad_cache_size > 0) 
-            {
-                esp_err_t rv = ESP_OK;
-                audio_data_t input = {
-                    .data = res->vad_cache,
-                    .data_size = res->vad_cache_size,
-                    .data_channels = afe_handle->get_feed_channel_num(afe_data),
-                    .target_channel = res->trigger_channel_id
-                };
-                audio_data_t output = {0};
-
-                rv = downmix_to_mono(input, &output);
-                if (rv == ESP_OK)
-                {
-                    printf("Save vad cache: %d\n", res->vad_cache_size);
-                    sdcard_write(output.data, 1, output.data_size, fd);
-                }
-                else printf("ERROR stereo_to_mono");
-
-                free(output.data);
-                output.data = NULL;
-            }
-            if (res->vad_state == VAD_SPEECH) 
-            {
-                esp_err_t rv = ESP_OK;
-                audio_data_t input = {
-                    .data = res->data,
-                    .data_size = res->data_size,
-                    .data_channels = afe_handle->get_feed_channel_num(afe_data),
-                    .target_channel = res->trigger_channel_id
-                };
-                audio_data_t output = {0};
-
-                rv = downmix_to_mono(input, &output);
-                if (rv == ESP_OK)
-                {
-                    sdcard_write(output.data, 1, output.data_size, fd);
-                }
-                else printf("ERROR stereo_to_mono");
-
-                free(output.data);
-                output.data = NULL;
-            }
+            ESP_LOGI(TAG, "VAD state: speech");
+            audio_data_t audio_data = {
+                .data = res->data,
+                .data_size = res->data_size,
+                .data_channels = afe_handle->get_feed_channel_num(afe_data),
+                .target_channel = res->trigger_channel_id
+            };
+            postprocess_and_stream(&audio_data);
         }
     }
 
@@ -122,10 +119,15 @@ void fetch_Task(void *arg)
 void app_main()
 {
     ESP_ERROR_CHECK(i2s_input_init());
-    if (sdcard_enable)
+
+#if SD_FOR_DEBUG_EN
+    ESP_ERROR_CHECK(sdcard_init("/sdcard", 10));
+    fd = fopen("/sdcard/TEST.pcm", "w+");
+    if(fd == NULL) 
     {
-        ESP_ERROR_CHECK(sdcard_init("/sdcard", 10));
+        ESP_LOGE(TAG, "Error opening file.");
     }
+#endif // SD_FOR_DEBUG_EN
 
     /* Initialize AFE Configuration */
     srmodel_list_t *models = esp_srmodel_init("model");
