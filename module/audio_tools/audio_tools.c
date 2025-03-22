@@ -1,9 +1,9 @@
 #include "audio_tools.h"
 
-esp_err_t downmix_to_mono(audio_data input, audio_data* output)
+esp_err_t downmix_to_mono(audio_data_t input, audio_data_t* output)
 {
-    if (!input.data || input.data_channels <= 0 || input.channel_index < 0 || 
-        input.channel_index >= input.data_channels) 
+    if (!input.data || !output || input.data_channels <= 0 ||
+        input.target_channel < 0 || input.target_channel >= input.data_channels) 
     {
         return ESP_ERR_INVALID_ARG;
     }
@@ -21,10 +21,10 @@ esp_err_t downmix_to_mono(audio_data input, audio_data* output)
 
     for (int i = 0; i < samples_per_channel; i++) 
     {
-        output->data[i] = input.data[i * input.data_channels + input.channel_index];
+        output->data[i] = input.data[i * input.data_channels + input.target_channel];
     }
 
-    output->channel_index = 0;
+    output->target_channel = 0;
     output->data_channels = 1;
 
     return ESP_OK;

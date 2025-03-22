@@ -73,13 +73,13 @@ void fetch_Task(void *arg)
             if (res->vad_cache_size > 0) 
             {
                 esp_err_t rv = ESP_OK;
-                audio_data input = {
+                audio_data_t input = {
                     .data = res->vad_cache,
                     .data_size = res->vad_cache_size,
                     .data_channels = afe_handle->get_feed_channel_num(afe_data),
-                    .channel_index = res->trigger_channel_id
+                    .target_channel = res->trigger_channel_id
                 };
-                audio_data output = {0};
+                audio_data_t output = {0};
 
                 rv = downmix_to_mono(input, &output);
                 if (rv == ESP_OK)
@@ -95,13 +95,13 @@ void fetch_Task(void *arg)
             if (res->vad_state == VAD_SPEECH) 
             {
                 esp_err_t rv = ESP_OK;
-                audio_data input = {
+                audio_data_t input = {
                     .data = res->data,
                     .data_size = res->data_size,
                     .data_channels = afe_handle->get_feed_channel_num(afe_data),
-                    .channel_index = res->trigger_channel_id
+                    .target_channel = res->trigger_channel_id
                 };
-                audio_data output = {0};
+                audio_data_t output = {0};
 
                 rv = downmix_to_mono(input, &output);
                 if (rv == ESP_OK)
