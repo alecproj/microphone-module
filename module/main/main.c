@@ -5,12 +5,18 @@
 #include "freertos/task.h"
 #include "model_path.h"
 #include "esp_log.h"
+#include "esp_event.h"
+#include "nvs_flash.h"
+#include "esp_netif.h"
+#include "protocol_examples_common.h"
 
 #include "i2s_input.h"
 #include "sdcard.h"
 #include "audio_tools.h"
+#include "network_stream.h"
 
-#define SD_FOR_DEBUG_EN 1
+#define SD_FOR_DEBUG_EN 0
+#define NETWORK_EN 1
 
 
 static esp_afe_sr_iface_t *afe_handle = NULL;
@@ -18,6 +24,9 @@ static const char* TAG = "module";
 #if SD_FOR_DEBUG_EN
 static FILE* fd = NULL;
 #endif // SD_FOR_DEBUG_EN
+#if NETWORK_EN
+static network_data_t network_data = {0};
+#endif // NETWORK_EN
 
 void postprocess_and_stream(audio_data_t* audio_data)
 {
@@ -45,6 +54,10 @@ void postprocess_and_stream(audio_data_t* audio_data)
 #if SD_FOR_DEBUG_EN
     sdcard_write(output.data, 1, output.data_size, fd);
 #endif // SD_FOR_DEBUG_EN
+
+#if NETWORK_EN
+    udp_send_pcm(output.data, output.data_size, &network_data);
+#endif // NETWORK_EN
 
     free(output.data);
     output.data = NULL;
@@ -119,6 +132,16 @@ void fetch_Task(void *arg)
 void app_main()
 {
     ESP_ERROR_CHECK(i2s_input_init());
+#if NETWORK_EN
+    ESP_ERROR_CHECK(nvs_flash_init());
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    /* This helper function configures Wi-Fi or Ethernet, as selected in menuconfig.
+     * TODO: Replace
+     */
+    ESP_ERROR_CHECK(example_connect());
+    ESP_ERROR_CHECK(network_init(&network_data));
+#endif // NETWORK_EN
 
 #if SD_FOR_DEBUG_EN
     ESP_ERROR_CHECK(sdcard_init("/sdcard", 10));
