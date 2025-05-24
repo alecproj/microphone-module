@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import argparse
 import logging
 import socket
 import signal
 import sys
 import multiprocessing as mp
-from typing import Optional, Tuple, NoReturn
+from typing import Optional, NoReturn, Dict, Any
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, closing
 
@@ -25,15 +26,63 @@ class Config:
     MAX_PACKET_LEN: int = 1024
     LOG_LEVEL: str = "INFO"
     VOSK_MODEL_PATH: str = "model/vosk-model-ru-0.42"
+    ENABLE_RECOGNITION: bool = True
+    ENABLE_PLAYBACK: bool = True
+    ENABLE_FILE_WRITE: bool = True
 
 # Type aliases
 AudioArray = npt.NDArray[np.int16]
 PacketData = bytes
 
-logging.basicConfig(
-    level=Config.LOG_LEVEL,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+def parse_args() -> Dict[str, Any]:
+    """Parsing command line arguments"""
+    parser = argparse.ArgumentParser(
+        description="RTP Audio Server with Voice Recognition",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    
+    parser.add_argument(
+        "--disable-recognition",
+        action="store_false",
+        dest="enable_recognition",
+        help="Disable voice recognition processing"
+    )
+    
+    parser.add_argument(
+        "--disable-playback",
+        action="store_false",
+        dest="enable_playback",
+        help="Disable audio playback"
+    )
+    
+    parser.add_argument(
+        "--disable-file-write",
+        action="store_false",
+        dest="enable_file_write",
+        help="Disable PCM file writing"
+    )
+    
+    parser.add_argument(
+        "--log-level",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        default=Config.LOG_LEVEL,
+        help="Set logging level"
+    )
+    
+    return vars(parser.parse_args())
+
+def configure_runtime(args: Dict[str, Any]) -> None:
+    """Updating configuration based on arguments"""
+    Config.ENABLE_RECOGNITION = args["enable_recognition"]
+    Config.ENABLE_PLAYBACK = args["enable_playback"]
+    Config.ENABLE_FILE_WRITE = args["enable_file_write"]
+    Config.LOG_LEVEL = args["log_level"]
+
+    logging.basicConfig(
+        level=Config.LOG_LEVEL,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+
 logger = logging.getLogger("RTPServer")
 
 class SpeechRecognizer(mp.Process):
@@ -52,7 +101,7 @@ class SpeechRecognizer(mp.Process):
         self.silence_timeout = 0.0
 
     def run(self) -> None:
-        """Основной цикл процесса распознавания"""
+        """Main cycle of the recognition process"""
         from vosk import Model, KaldiRecognizer
         import json
         
@@ -81,23 +130,34 @@ class SpeechRecognizer(mp.Process):
 class AudioStreamer:
     def __init__(self) -> None:
         # Playback
-        self.p = pyaudio.PyAudio()
+        self.p = pyaudio.PyAudio() if Config.ENABLE_PLAYBACK else None
         self.stream: Optional[pyaudio.Stream] = None
+
         # Recognition
-        self.audio_queue = mp.Queue(maxsize=100)
-        self.result_queue = mp.Queue()
-        self.stop_event = mp.Event()
-        self.recognizer_proc = SpeechRecognizer(
-            self.audio_queue,
-            self.result_queue,
-            self.stop_event,
-            Config.VOSK_MODEL_PATH
-        )
+        if Config.ENABLE_RECOGNITION:
+            self.audio_queue = mp.Queue(maxsize=100)
+            self.result_queue = mp.Queue()
+            self.stop_event = mp.Event()
+            self.recognizer_proc = SpeechRecognizer(
+                self.audio_queue,
+                self.result_queue,
+                self.stop_event,
+                Config.VOSK_MODEL_PATH
+            )
+        else:
+            self.audio_queue = None
+            self.result_queue = None
+            self.stop_event = None
+            self.recognizer_proc = None
+
         # File
-        self.file_executor = ThreadPoolExecutor(max_workers=1)
+        self.file_executor = ThreadPoolExecutor(max_workers=1) if Config.ENABLE_FILE_WRITE else None
 
     @contextmanager
     def audio_context(self) -> pyaudio.Stream:
+        if not Config.ENABLE_PLAYBACK:
+            yield None
+            return
         try:
             stream = self.p.open(
                 format=Config.AUDIO_FORMAT,
@@ -115,11 +175,16 @@ class AudioStreamer:
             self.p.terminate()
     
     def start_recognition(self):
-        self.recognizer_proc.start()
-        self.result_handler = ThreadPoolExecutor(max_workers=1)
-        self.result_handler.submit(self._handle_results)
+        if Config.ENABLE_RECOGNITION:
+            self.recognizer_proc.start()
+            self.result_handler = ThreadPoolExecutor(max_workers=1)
+            self.result_handler.submit(self._handle_results)
+        else:
+            logger.info("Voice recognition is disabled")
 
     def _handle_results(self):
+        if not Config.ENABLE_RECOGNITION:
+            return
         while not self.stop_event.is_set():
             try:
                 res_type, text = self.result_queue.get(timeout=0.5)
@@ -136,22 +201,27 @@ class AudioStreamer:
 
     def process_audio(self, data: bytes):
         # Playback
-        if self.stream and self.stream.is_active():
+        if Config.ENABLE_PLAYBACK and self.stream and self.stream.is_active():
             try:
                 self.stream.write(data)
             except IOError as e:
                 logger.error(f"Audio error: {str(e)}")
 
         # Recognition
-        try:
-            self.audio_queue.put_nowait(data)
-        except mp.queues.Full:
-            logger.warning("Audio queue full, dropping data")
+        if Config.ENABLE_RECOGNITION and self.audio_queue:
+            try:
+                self.audio_queue.put_nowait(data)
+            except mp.queues.Full:
+                logger.warning("Audio queue full, dropping data")
         
         # Write file
-        self._async_write("TEST.PCM", data)
+        if Config.ENABLE_FILE_WRITE:
+            self._async_write("TEST.PCM", data)
 
     def _async_write(self, filename: str, data: bytes) -> None:
+        if not Config.ENABLE_FILE_WRITE or not self.file_executor:
+            return
+
         def write_task():
             try:
                 with open(filename, "ab") as f:
@@ -161,11 +231,15 @@ class AudioStreamer:
         self.file_executor.submit(write_task)
 
     def shutdown(self):
-        self.stop_event.set()
-        self.recognizer_proc.join(timeout=5)
-        if self.recognizer_proc.is_alive():
-            self.recognizer_proc.terminate()
-        self.result_handler.shutdown()
+        if Config.ENABLE_RECOGNITION:
+            self.stop_event.set()
+            self.recognizer_proc.join(timeout=5)
+            if self.recognizer_proc.is_alive():
+                self.recognizer_proc.terminate()
+            self.result_handler.shutdown()
+
+        if self.file_executor:
+            self.file_executor.shutdown()
 
 def validate_rtp_packet(packet: PacketData) -> bool:
     if len(packet) < Config.MIN_PACKET_LEN:
@@ -209,7 +283,11 @@ def udp_server() -> NoReturn:
         sock.settimeout(1.0)  # Allow periodic check for exit signal
 
         with audio_streamer.audio_context():
-            logger.info(f"Server started on {Config.HOST}:{Config.PORT}")
+            logger.info(f"Server started on {Config.HOST}:{Config.PORT} with settings:")
+            logger.info(f" Recognition: {Config.ENABLE_RECOGNITION}")
+            logger.info(f" Playback: {Config.ENABLE_PLAYBACK}")
+            logger.info(f" File write: {Config.ENABLE_FILE_WRITE}")
+
             while exiter.running:
                 try:
                     packet, addr = sock.recvfrom(Config.MAX_PACKET_LEN)
@@ -237,6 +315,8 @@ def udp_server() -> NoReturn:
     sys.exit(0)
 
 if __name__ == "__main__":
+    args = parse_args()
+    configure_runtime(args)
     try:
         udp_server()
     except KeyboardInterrupt:
