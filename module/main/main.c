@@ -15,9 +15,9 @@
 #include "audio_tools.h"
 #include "network_stream.h"
 
-#define SD_FOR_DEBUG_EN 0
-#define NETWORK_EN 1
-
+// Configuration switches
+#define SD_FOR_DEBUG_EN 0  // Enable SD card logging for debug (0=disabled)
+#define NETWORK_EN 1       // Enable network streaming (1=enabled)
 
 static esp_afe_sr_iface_t *afe_handle = NULL;
 static const char* TAG = "module";
@@ -28,6 +28,17 @@ static FILE* fd = NULL;
 static network_data_t network_data = {0};
 #endif // NETWORK_EN
 
+/**
+ * @brief Process audio data and stream to output targets
+ * 
+ * @param audio_data Input audio data structure
+ * 
+ * Performs:
+ * 1. Downmix to mono (if multichannel input)
+ * 2. SD card debug logging (if enabled)
+ * 3. Network streaming (if enabled)
+ * 4. Memory cleanup
+ */
 void postprocess_and_stream(audio_data_t* audio_data)
 {
     esp_err_t rv = ESP_OK;
@@ -63,6 +74,15 @@ void postprocess_and_stream(audio_data_t* audio_data)
     output.data = NULL;
 }
 
+/**
+ * @brief Task for feeding audio data to AFE (Audio Front-End)
+ * 
+ * @param arg AFE data handle (esp_afe_sr_data_t)
+ * 
+ * Continuously:
+ * 1. Reads audio from I2S input
+ * 2. Feeds data to AFE processing pipeline
+ */
 void feed_Task(void *arg)
 {
     esp_afe_sr_data_t *afe_data = arg;
@@ -89,12 +109,23 @@ void feed_Task(void *arg)
     vTaskDelete(NULL);
 }
 
+/**
+ * @brief Task for fetching processed audio from AFE
+ * 
+ * @param arg AFE data handle (esp_afe_sr_data_t)
+ * 
+ * Continuously:
+ * 1. Fetches processed audio from AFE
+ * 2. Processes VAD (Voice Activity Detection) results
+ * 3. Sends valid audio segments to postprocessing
+ */
 void fetch_Task(void *arg)
 {
     esp_afe_sr_data_t *afe_data = arg;
 
     while (1)
     {
+        // Get processed audio results
         afe_fetch_result_t *res = afe_handle->fetch(afe_data);
         if (!res || res->ret_value == ESP_FAIL)
         {
@@ -129,6 +160,16 @@ void fetch_Task(void *arg)
     vTaskDelete(NULL);
 }
 
+/**
+ * @brief Main application entry point
+ * 
+ * Initializes:
+ * 1. I2S audio input
+ * 2. Network connectivity (if enabled)
+ * 3. SD card (if debug enabled)
+ * 4. Audio Front-End processing
+ * 5. Feed/fetch tasks
+ */
 void app_main()
 {
     ESP_ERROR_CHECK(i2s_input_init());

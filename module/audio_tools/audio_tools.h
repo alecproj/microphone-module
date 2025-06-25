@@ -11,7 +11,7 @@ typedef struct {
     int16_t *data;      // pointer to raw audio samples (e.g., PCM).
     size_t data_size;   // size of the data buffer in bytes.
     int data_channels;  // number of audio channels (e.g., 1 for mono, 2 for stereo)
-    int target_channel;  // channel index to prioritize during downmix (e.g., 0 for first channel)
+    int target_channel; // channel index to prioritize during downmix (e.g., 0 for first channel)
 } audio_data_t;
 
 /**

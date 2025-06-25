@@ -36,7 +36,6 @@ esp_err_t sdcard_init(char *mount_point, size_t max_files)
     slot_config.gpio_cs = GPIO_SDSPI_CS;
     slot_config.host_id = host.slot;
 
-
     rv = spi_bus_initialize(host.slot, &bus_cfg, SPI_DMA_CH_AUTO);
     if (rv != ESP_OK) 
     {
@@ -45,7 +44,6 @@ esp_err_t sdcard_init(char *mount_point, size_t max_files)
     }
 
     esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_config, &card);
-
 
     /* Check for mount result. */
     if (rv != ESP_OK) 
