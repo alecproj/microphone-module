@@ -1,95 +1,71 @@
-# ESP-Skainet [[中文]](./README_cn.md)
 
-ESP-Skainet is Espressif's intelligent voice assistant, which currently supports the Wake Word Engine and Speech Commands Recognition.
+<div align="center">
 
-### ESP32-S3 is recommend to run speech commands recognition, which supports AI instructions and high-speed octal SPI PSRAM. The Latest models will be deployed on ESP32-S3 first.
+# Smart Home Microphone Module
+English | [Русский](./README.ru.md)
+</div>
+
+**Smart Home Microphone Module** is a compact IoT device based on the ESP32-S3 microcontroller, designed for use in voice-controlled systems, audio monitoring, and integration with smart-home infrastructure. The device captures ambient sound, isolates voice data, processes it, and transmits it over a distributed network.
+
+> [!NOTE]  
+> This project is based on the [voice_activity_detection](https://github.com/espressif/esp-skainet/tree/master/examples/voice_activity_detection) example from Espressif’s esp-skainet repository.
 
 # Overview
 
-ESP-Skainet supports the development of wake word detection and speech commands recognition applications based around Espressif Systems' ESP32 series chip in the most convenient way. With ESP-Skainet, you can easily build up wake word detection and speech command recognition applications.
+The project comprises the following components:
+- [Microphone Module](#microphone-module) (source code, schematic, PCB layout, enclosure)
+- [Server](#server) (server-side source code)
+- [voice_activity_detection Example](#voice_activity_detection-example) from Espressif, adapted for DevKit ESP32-S3 with one or two INMP441 MEMS microphones
 
-In general, the ESP-Skainet features will be supported, as shown below:
+## Microphone Module
 
-![overview](img/skainet_overview2.png)
+![Microphone module printed circuit board](./img/module-pcb-view.png) 
+The core components of the device are the `ESP32-S3-WROOM-N16R8` module and two I²S MEMS microphones `INMP441`.
 
-## Input Voice Stream
+> [!WARNING]  
+> This project works **only** with an ESP32 variant that supports **at least 4 MB of PSRAM**!
 
-The input audio stream can come from any way of providing voice, such as MIC, wav/pcm files in flash/SD Card.
+The module reads audio data from the I²S microphones and processes it using Espressif’s **Audio Front End ([AFE](https://docs.espressif.com/projects/esp-sr/en/latest/esp32s3/audio_front_end/README.html))**. During processing, it performs **Voice Activity Detection (VAD)** and **Noise Suppression (NS)**. The voice data then undergoes **Automatic Gain Control (AGC)**, is converted to mono, packaged into **RTP packets**, and sent to the server over Wi-Fi via **UDP**.
 
-## Wake Word Engine
+Schematic of AFE audio processing:  
+![AFE audio processing schematic](./img/afe-processing.png)
 
-Espressif wake word engine [WakeNet](https://docs.espressif.com/projects/esp-sr/en/latest/esp32/wake_word_engine/README.html) is specially designed to provide a high performance and low memory footprint wake word detection algorithm for users, which enables devices always wait for wake words, such as "Alexa",  “天猫精灵” (Tian Mao Jing Ling), and “小爱同学” (Xiao Ai Tong Xue).  
+The project also includes a server application that runs on the local network and performs **speech recognition**.
 
-Currently, Espressif has not only provided an official wake word "Hi, Lexin" to the public for free but also allows customized wake words. For details on how to customize your own wake words, please see [Espressif Speech Wake Words Customization Process](https://docs.espressif.com/projects/esp-sr/en/latest/esp32/wake_word_engine/ESP_Wake_Words_Customization.html).
+Key features of the device:
+-  Audio processing: VAD / NS / AGC / MISO
+-  Logging processed voice data to an SD card (for debugging)
+-  Transmitting only voice-active raw PCM data over Wi-Fi (UDP/RTP)
 
-## Speech Commands Recognition
+> [!TIP]  
+> You can easily reproduce this on a breadboard and test it yourself.  
+> Check the [module/](./module) directory for the microphone module’s source code and its **README** with quick-start setup instructions.
 
-Espressif's speech command recognition model [MultiNet](https://docs.espressif.com/projects/esp-sr/en/latest/esp32/speech_command_recognition/README.html) is specially designed to provide a flexible offline speech command recognition model. With this model, you can easily add your own speech commands, eliminating the need to train model again.
+### Schematic
 
-Currently, Espressif **MultiNet** supports up to 200 Chinese or English speech commands, such as “打开空调” (Turn on the air conditioner) and “打开卧室灯” (Turn on the bedroom light). 
+> [!CAUTION]  
+> There may be errors in the schematic or PCB layout. Before fabricating the PCB, we recommend consulting a professional!  
+> See the [implementation notes](./pcb/README.md).
 
-## Audio Front End
+![Schematic diagram of the device](./img/schematic.png)
 
-Espressif Audio Front-End [AFE](https://docs.espressif.com/projects/esp-sr/en/latest/esp32/audio_front_end/index.html) integrates AEC (Acoustic Echo Cancellation),  VAD (Voice Activity Detection),BSS (Blind Source Separation) and NS (Noise Suppression).    
+### Enclosure
 
-Our two-mic Audio Front-End (AFE) have been qualified as a “Software Audio Front-End Solution” for [Amazon Alexa Built-in devices](https://developer.amazon.com/en-US/alexa/solution-providers/dev-kits#software-audio-front-end-dev-kits).
-![afe](img/esp_afe.png)    
-  
-  
-# Quick Start with ESP-Skainet
+![Enclosure of the device](./img/corps.png)
 
-## Hardware Preparation
+## Server
 
-To run ESP-Skainet, you need to have an ESP32 or ESP32-S3 development board which integrates an audio input module .
-Development board Support:
+The **server application**, written in Python, receives RTP packets from the device over the local network. Depending on user configuration, it can:
+- play back the incoming audio in real time,
+- save it to a file,
+- perform offline speech recognition using the [VOSK API](https://github.com/alphacep/vosk-api) framework.
 
-|                          Example Name                               |   Latest Models   |  Supported Board   |
-| :------------------------------------------------------------------ | :---------------: | :-------------- |
-| [cn_speech_commands_recognition](./cn_speech_commands_recognition) | MultiNet7      | [ESP32-Korvo](https://github.com/espressif/esp-skainet/blob/master/docs/en/hw-reference/esp32/user-guide-esp32-korvo-v1.1.md), [ESP32-S3-Korvo-1](https://github.com/espressif/esp-skainet/blob/master/docs/en/hw-reference/esp32s3/user-guide-korvo-1.md), [ESP-BOX](https://github.com/espressif/esp-box), [ESP-S3-Korvo-2](https://docs.espressif.com/projects/esp-adf/en/latest/get-started/user-guide-esp32-s3-korvo-2.html), [ESP32-S3-EYE](https://www.espressif.com/en/products/devkits/esp-s3-eye/overview), [ESP32-P4-Function-EV](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32p4/esp32-p4-function-ev-board/user_guide.html#getting-started)|
-| [en_speech_commands_recognition](./en_speech_commands_recognition) | MultiNet7      | [ESP32-S3-Korvo-1](https://github.com/espressif/esp-skainet/blob/master/docs/en/hw-reference/esp32s3/user-guide-korvo-1.md), [ESP-BOX](https://github.com/espressif/esp-box), [ESP-S3-Korvo-2](https://docs.espressif.com/projects/esp-adf/en/latest/get-started/user-guide-esp32-s3-korvo-2.html), [ESP32-S3-EYE](https://www.espressif.com/en/products/devkits/esp-s3-eye/overview), [ESP32-P4-Function-EV](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32p4/esp32-p4-function-ev-board/user_guide.html#getting-started)|
-| [wake_word_detection](./wake_word_detection)                       | Wakenet9       | [ESP32-Korvo](https://github.com/espressif/esp-skainet/blob/master/docs/en/hw-reference/esp32/user-guide-esp32-korvo-v1.1.md), [ESP32-S3-Korvo-1](https://github.com/espressif/esp-skainet/blob/master/docs/en/hw-reference/esp32s3/user-guide-korvo-1.md), [ESP-BOX](https://github.com/espressif/esp-box), [ESP-S3-Korvo-2](https://docs.espressif.com/projects/esp-adf/en/latest/get-started/user-guide-esp32-s3-korvo-2.html), [ESP32-S3-EYE](https://www.espressif.com/en/products/devkits/esp-s3-eye/overview), [ESP32-P4-Function-EV](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32p4/esp32-p4-function-ev-board/user_guide.html#getting-started)|
-| [chinese_tts](./chinese_tts)                                       | esp-tts-v1.7    | [ESP32-Korvo](https://github.com/espressif/esp-skainet/blob/master/docs/en/hw-reference/esp32/user-guide-esp32-korvo-v1.1.md), [ESP32-S3-Korvo-1](https://github.com/espressif/esp-skainet/blob/master/docs/en/hw-reference/esp32s3/user-guide-korvo-1.md), [ESP-BOX](https://github.com/espressif/esp-box), [ESP-S3-Korvo-2](https://docs.espressif.com/projects/esp-adf/en/latest/get-started/user-guide-esp32-s3-korvo-2.html), [ESP32-P4-Function-EV](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32p4/esp32-p4-function-ev-board/user_guide.html#getting-started)|
-| [usb_mic_recorder](./usb_mic_recorder)                                       |      | [ESP-BOX](https://github.com/espressif/esp-box), [ESP-S3-Korvo-2](https://docs.espressif.com/projects/esp-adf/en/latest/get-started/user-guide-esp32-s3-korvo-2.html)|
+> [!TIP]  
+> See the [server/](./server) directory for the server application’s source code and its **README** with quick-start setup instructions.
 
-On how to configure your applications, please refer to the README.md of each example.
+## voice_activity_detection example
 
-## Software Preparation
+The original **VAD** example from Espressif’s [esp-skainet](https://github.com/espressif/esp-skainet) repository supports only official evaluation boards (Korvo, Eye, etc.). In this project, it has been extended to run on **custom boards** (including the ESP32 DevKit) with one or two **INMP441** microphones (or other I²S MEMS mics).
 
-### ESP-Skainet
-Clone this project as follows:
-
-```
-git clone https://github.com/espressif/esp-skainet.git 
-```
-
-### ESP-IDF
-
- [ESP-IDF v4.4](https://github.com/espressif/esp-idf/tree/release/v4.4) and [ESP-IDF v5.0](https://github.com/espressif/esp-idf/tree/release/v5.0) are supported. If you had already configured ESP-IDF before, and do not want to change your existing one, you can configure the `IDF_PATH` environment variable to the path to ESP-IDF. 
-
-For details on how to set up the ESP-IDF, please refer to [Getting Started Guide for ESP-IDF release/v4.4 branch](https://docs.espressif.com/projects/esp-idf/en/release-v4.4/esp32/get-started/index.html)
-
-# Examples
-The folder of [examples](examples) contains some applications demonstrating the API features of ESP-Skainet.
-
-Please start with the [wake_word_detection](./examples/wake_word_detection)  example.
-
-1. Navigate to one example folder `esp-skainet/examples/wake_word_detection).
-```
-cd esp-skainet/examples/wake_word_detection
-```
-
-2. Compile and flash the project.
-```
-idf.py flash monitor
-```
-3. Advanced users can add or modify speech commands by using the `idf.py menuconfig` command.
-
-
-For details, please read the README file in each example.
-
-
-# Resources
-
-* [View the Issues section on GitHub](https://github.com/espressif/esp-skainet/issues) if you find a bug or have a feature request, please check existing Issues before opening a new one.
-
-* If you are interested in contributing to ESP-Skainet, please check the [Contributions Guide](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/contribute/index.html).
+> [!TIP]  
+> See the [examples/voice_activity_detection](./examples/voice_activity_detection) directory for the example’s description, source code, and its **README** with quick-start setup instructions.
