@@ -11,3 +11,7 @@ test/*/4.4
 __pycache__
 pytest_log
 .obsidian
+pyvenv
+server/model/
+server/TEST.PCM
+pyrightconfig.json
