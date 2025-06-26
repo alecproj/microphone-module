@@ -1,8 +1,60 @@
 <div align="center">
 
-English| [Русский](./README.ru.md)
+# Module Firmware
+English | [Русский](./README.ru.md)
 </div>
 
+# Overview
+
+This section covers the ESP32-S3 firmware implementing the Smart Home Microphone Module with the following functionality:
+- 🎙️ Audio capture via I²S microphone (e.g., INMP441) with multi-channel input support
+- 🧠 Audio processing using Espressif’s ESP-SR (Speech Recognition) library:
+- 🧠 VAD (Voice Activity Detection)    
+- 🌐 Audio transmission over the network using RTP and UDP protocols
+- 💾 Debug logging of raw PCM data to an SD card (optional)
+
+### Key Technologies
+
+- [ESP-IDF](https://github.com/espressif/esp-idf) – Development framework for ESP32
+- [ESP-SR](https://github.com/espressif/esp-sr) – Espressif’s audio-processing library
+- [RTP](https://en.wikipedia.org/wiki/Real-time_Transport_Protocol) – Real-time audio transport protocol
+- [FATFS](https://docs.espressif.com/projects/esp-idf/en/v5.4.2/esp32s3/api-reference/storage/fatfs.html) – File system for SD-card access
+- [FreeRTOS](https://docs.espressif.com/projects/esp-idf/en/v5.4.2/esp32s3/api-reference/system/freertos.html) – Real-time OS for multi-core processing
+
+### Use Cases
+
+1. Voice-control systems with remote processing
+2. Lecture-recording devices streaming to a server
+3. Real-time audio-monitoring systems
+
+### Implementation Highlights
+
+1. Dual-core architecture:
+    ```c
+    xTaskCreatePinnedToCore(&feed_Task, ...);  // Core 0: capture
+    xTaskCreatePinnedToCore(&fetch_Task, ...); // Core 1: processing
+    ```    
+2. Efficient memory management:
+    - Statically allocated buffers
+    - Ring buffers for audio data
+    - Minimal data copying
+3. Fault tolerance:
+    - Packet-integrity checks
+    - Automatic driver reinitialization
+    - Buffer-overflow protection
+
+### Operation Modes
+
+1. **Direct streaming to server**  
+    Module → Wi-Fi → RTP/UDP → Recognition server
+2. **Local storage**  
+    Module → SD Card
+3. **Hybrid mode**  
+    Module → (Network + SD Card) in parallel
+
+### Firmware Architecture Diagram
+
+![Firmware Architecture Diagram](../img/arch-diagram.png)
 # Get started
 
 ## Hardware Preparation
@@ -73,7 +125,7 @@ To flash the microcontroller and configure the project, install the [ESP-IDF fra
 2. If you plan to use the module with your computer acting as the server on the local network, it’s recommended to first [install and configure the server](../server/README.md).
 3. Change into the module directory:
     ```sh
-    cd module
+    cd microphone-module/module
     ```
 4. Set up ESP-IDF environment variables (see the [official guide](https://docs.espressif.com/projects/esp-idf/en/v5.4.2/esp32s3/get-started/linux-macos-setup.html#step-4-set-up-the-environment-variables)).
 5. Configure the project:
@@ -130,3 +182,4 @@ To flash the microcontroller and configure the project, install the [ESP-IDF fra
 - Implement custom Wi-Fi connection logic
 - Integrate automatic gain control (AGC)
 - Add project configuration via `Kconfig`
+- Implement an OTA update system
